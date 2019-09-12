@@ -2,11 +2,23 @@
 
 namespace App\Http\Controllers\Auth;
 
-use App\User;
+use App\Filters\Users\RegisterInputFilter;
+use App\Http\JsonResponseTrait;
+use App\Repositories\Models\User;
 use App\Http\Controllers\Controller;
-use Illuminate\Support\Facades\Validator;
+use App\Services\Contracts\UserServiceContract;
+use Exception;
+use Fig\Http\Message\StatusCodeInterface;
+use Illuminate\Database\QueryException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Foundation\Auth\RegistersUsers;
+use Illuminate\Http\Request;
 
+/**
+ * Class RegisterController
+ * @package App\Http\Controllers\Auth
+ * @author Rafael Neris <rafaelnerisdj@gmail.com>
+ */
 class RegisterController extends Controller
 {
     /*
@@ -20,7 +32,7 @@ class RegisterController extends Controller
     |
     */
 
-    use RegistersUsers;
+    use RegistersUsers, JsonResponseTrait;
 
     /**
      * Where to redirect users after registration.
@@ -28,44 +40,63 @@ class RegisterController extends Controller
      * @var string
      */
     protected $redirectTo = '/home';
+    /**
+     * @var RegisterInputFilter
+     */
+    private $registerInputFilter;
+    /**
+     * @var UserServiceContract
+     */
+    private $userService;
 
     /**
      * Create a new controller instance.
      *
-     * @return void
+     * @param RegisterInputFilter $registerInputFilter
+     * @param UserServiceContract $userService
      */
-    public function __construct()
+    public function __construct(RegisterInputFilter $registerInputFilter, UserServiceContract $userService)
     {
-        $this->middleware('guest');
+        $this->middleware('auth');
+        $this->registerInputFilter = $registerInputFilter;
+        $this->userService = $userService;
     }
 
     /**
-     * Get a validator for an incoming registration request.
-     *
-     * @param  array  $data
-     * @return \Illuminate\Contracts\Validation\Validator
+     * @param Request $request
+     * @return JsonResponse
      */
-    protected function validator(array $data)
+    public function register(Request $request)
     {
-        return Validator::make($data, [
-            'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users',
-            'password' => 'required|string|min:6|confirmed',
-        ]);
-    }
+        $userRequest = $request->all();
+        $validator = $this->registerInputFilter->validate($userRequest);
 
-    /**
-     * Create a new user instance after a valid registration.
-     *
-     * @param  array  $data
-     * @return \App\User
-     */
-    protected function create(array $data)
-    {
-        return User::create([
-            'name' => $data['name'],
-            'email' => $data['email'],
-            'password' => bcrypt($data['password']),
-        ]);
+        if ($validator->fails()) {
+            return $this->response(
+                ['error' => $validator->errors()],
+                StatusCodeInterface::STATUS_BAD_REQUEST
+            );
+        }
+
+        try {
+            /** @var User $userModel */
+            $userModel = $this->userService->create($userRequest);
+            $success['id'] = $userModel->id;
+
+            return $this->response(
+                $success,
+                StatusCodeInterface::STATUS_CREATED
+            );
+        } catch (QueryException $qe) {
+            return $this->response(
+                ['error' => "Dados existentes na base. Favor verificar."],
+                StatusCodeInterface::STATUS_BAD_REQUEST
+            );
+        } catch (Exception $e) {
+            return $this->response(
+                ['error' => 'Erro ao salvar usuário.'],
+                StatusCodeInterface::STATUS_BAD_REQUEST
+            );
+        }
     }
 }
