@@ -1,0 +1,72 @@
+version: '3'
+services:
+  front:
+    build:
+      context: .docker/php-frontend
+    working_dir: /var/www
+    volumes:
+      - ../:/var/www
+    environment:
+      - "DB_PORT=3306"
+      - "DB_HOST=db"
+    hostname: your-domain.local
+    networks:
+      - your-network
+  app:
+    build: .docker/php
+    restart: always
+    container_name: app
+    environment:
+      - DB_HOST=db
+      - DB_DATABASE=your_database
+      - DB_USERNAME=root
+      - DB_PASSWORD=root
+    volumes:
+      - ../:/var/www
+    networks:
+      - your-network
+    depends_on:
+      - db
+      - redis
+  nginx:
+    build: .docker/nginx
+    container_name: nginx
+    restart: always
+    tty: true
+    ports:
+      - "8000:80"
+    volumes:
+      - ../:/var/www
+    networks:
+      - your-network
+    depends_on:
+      - app
+
+  db:
+    image: mysql:5.7
+    command: --innodb-use-native-aio=0
+    container_name: db
+    restart: always
+    tty: true
+    ports:
+      - "33006:3306"
+    volumes:
+      - ./dbdata:/var/lib/mysql:rw
+    environment:
+      - MYSQL_DATABASE=yourdatabase
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_USER=root
+    expose:
+      - "3306"
+    networks:
+      - your-network
+  redis:
+    image: redis:alpine
+    expose:
+      - 6379
+    networks:
+      - your-network
+
+networks:
+  your-network:
+    driver: bridge
